@@ -10,11 +10,10 @@ This server is the first Hive MCP for muckaway.ai — an uncontested vertical
 in the 9,400+ MCP ecosystem.
 """
 
-from typing import Any
-from fastmcp import FastMCP
-from datetime import datetime, timedelta
-import json
 import math
+from datetime import datetime, timedelta
+
+from fastmcp import FastMCP
 
 # Initialize the MCP server
 mcp = FastMCP("muckaway-mcp")
@@ -134,7 +133,11 @@ DEFRA_RULES = {
         "requires_carrier_license": True,
         "requires_hazardous_consignment_note": True,
         "prohibited_methods": ["open_burning", "uncontrolled_landfill", "sewer_disposal"],
-        "required_documentation": ["hazardous_consignment_note", "waste_transfer_note", "carrier_license"],
+        "required_documentation": [
+            "hazardous_consignment_note",
+            "waste_transfer_note",
+            "carrier_license",
+        ],
     },
     "non_hazardous_waste": {
         "requires_carrier_license": False,
@@ -164,6 +167,7 @@ WATER_QUALITY_THRESHOLDS = {
 # ════════════════════════════════════════════════════════════════════════════
 # MCP TOOLS
 # ════════════════════════════════════════════════════════════════════════════
+
 
 @mcp.tool()
 def waste_classification_lookup(waste_code: str) -> dict:
@@ -217,17 +221,17 @@ def skip_hire_quote(postcode: str, waste_type: str, skip_size: int) -> dict:
 
     price_data = SKIP_PRICES[skip_size]
     base_price = price_data["price_per_week"]
-    
+
     # Hazardous waste surcharge
     hazardous_keywords = ["asbestos", "chemical", "oil", "paint", "solvent", "hazardous"]
     is_hazardous = any(kw in waste_type.lower() for kw in hazardous_keywords)
     hazardous_surcharge = 150.00 if is_hazardous else 0.00
-    
+
     # Permit surcharge (if on public highway — assume 50% chance for demo)
     permit_surcharge = 30.00
-    
+
     total_price = base_price + hazardous_surcharge + permit_surcharge
-    
+
     return {
         "error": False,
         "postcode": postcode.upper(),
@@ -268,14 +272,14 @@ def grab_lorry_booking(postcode: str, waste_type: str, volume_m3: float) -> dict
             "error": True,
             "message": "Volume must be greater than 0 cubic metres.",
         }
-    
+
     loads_required = max(1, math.ceil(volume_m3 / GRAB_LORRY_CAPACITY_M3))
     estimated_hours = loads_required * 1.5  # 1.5 hours per load
     estimated_cost = estimated_hours * GRAB_LORRY_RATE
-    
+
     # Check availability (demo: always available within 2-5 days)
     availability_days = min(5, max(2, round(volume_m3 / 10)))
-    
+
     return {
         "error": False,
         "postcode": postcode.upper(),
@@ -297,7 +301,9 @@ def grab_lorry_booking(postcode: str, waste_type: str, volume_m3: float) -> dict
 
 
 @mcp.tool()
-def waste_transfer_note_generator(site: str, waste_type: str, carrier: str, destination: str) -> dict:
+def waste_transfer_note_generator(
+    site: str, waste_type: str, carrier: str, destination: str
+) -> dict:
     """
     Generate a Waste Transfer Note (WTN) document.
 
@@ -311,7 +317,7 @@ def waste_transfer_note_generator(site: str, waste_type: str, carrier: str, dest
         A structured Waste Transfer Note ready for printing or digital submission.
     """
     wtn_id = f"WTN-{datetime.now().strftime('%Y%m%d')}-{hash(site + carrier) % 10000:04d}"
-    
+
     wtn = {
         "document_type": "Waste Transfer Note",
         "wtn_id": wtn_id,
@@ -340,7 +346,7 @@ def waste_transfer_note_generator(site: str, waste_type: str, carrier: str, dest
         "retention_period": "2 years from date of transfer",
         "regulatory_framework": "Environmental Protection Act 1990, Waste (England and Wales) Regulations 2011",
     }
-    
+
     return {
         "error": False,
         "wtn": wtn,
@@ -396,19 +402,27 @@ def defra_compliance_check(waste_type: str, disposal_method: str) -> dict:
     """
     # Determine waste category
     waste_type_lower = waste_type.lower()
-    if "hazardous" in waste_type_lower or "asbestos" in waste_type_lower or "chemical" in waste_type_lower:
+    if (
+        "hazardous" in waste_type_lower
+        or "asbestos" in waste_type_lower
+        or "chemical" in waste_type_lower
+    ):
         category = "hazardous_waste"
-    elif "inert" in waste_type_lower or "concrete" in waste_type_lower or "brick" in waste_type_lower:
+    elif (
+        "inert" in waste_type_lower or "concrete" in waste_type_lower or "brick" in waste_type_lower
+    ):
         category = "inert_waste"
     else:
         category = "non_hazardous_waste"
-    
+
     rules = DEFRA_RULES[category]
-    
+
     # Check if disposal method is prohibited
     method_lower = disposal_method.lower().replace(" ", "_")
-    prohibited = method_lower in rules["prohibited_methods"] or any(pm in method_lower for pm in rules["prohibited_methods"])
-    
+    prohibited = method_lower in rules["prohibited_methods"] or any(
+        pm in method_lower for pm in rules["prohibited_methods"]
+    )
+
     # Check specific method compliance
     compliant_methods = {
         "recycling": True,
@@ -419,11 +433,11 @@ def defra_compliance_check(waste_type: str, disposal_method: str) -> dict:
         "composting": category == "non_hazardous_waste",
         "energy_recovery": category in ["non_hazardous_waste", "hazardous_waste"],
     }
-    
+
     method_compliant = compliant_methods.get(method_lower, False)
-    
+
     overall_compliant = not prohibited and method_compliant
-    
+
     return {
         "error": False,
         "waste_type": waste_type,
@@ -442,23 +456,33 @@ def defra_compliance_check(waste_type: str, disposal_method: str) -> dict:
 def _get_compliance_recommendations(category: str, disposal_method: str) -> list:
     """Generate compliance recommendations based on category and method."""
     recommendations = []
-    
+
     if category == "hazardous_waste":
-        recommendations.append("Use a licensed hazardous waste carrier (check on EA public register).")
+        recommendations.append(
+            "Use a licensed hazardous waste carrier (check on EA public register)."
+        )
         recommendations.append("Complete a hazardous consignment note for every movement.")
-        recommendations.append("Ensure the receiving facility has an environmental permit for hazardous waste.")
+        recommendations.append(
+            "Ensure the receiving facility has an environmental permit for hazardous waste."
+        )
     elif category == "inert_waste":
-        recommendations.append("Inert waste can go to inert landfill or be reused on site (subject to waste exemption).")
-        recommendations.append("No waste transfer note required if reused under U1 exemption (use of waste in construction).")
+        recommendations.append(
+            "Inert waste can go to inert landfill or be reused on site (subject to waste exemption)."
+        )
+        recommendations.append(
+            "No waste transfer note required if reused under U1 exemption (use of waste in construction)."
+        )
     else:
         recommendations.append("Complete a waste transfer note for every movement.")
         recommendations.append("Use a registered waste carrier (check on EA public register).")
-    
+
     if "recycling" in disposal_method.lower():
         recommendations.append("Recycling is the preferred option under the waste hierarchy.")
     if "landfill" in disposal_method.lower():
-        recommendations.append("Landfill is the least preferred option under the waste hierarchy — consider recycling or recovery first.")
-    
+        recommendations.append(
+            "Landfill is the least preferred option under the waste hierarchy — consider recycling or recovery first."
+        )
+
     return recommendations
 
 
@@ -477,22 +501,27 @@ def water_quality_monitor(ph: float, ammonia: float, nitrite: float, temperature
         Water quality assessment with alerts and recommendations.
     """
     thresholds = WATER_QUALITY_THRESHOLDS
-    
+
     # Assess each parameter
     ph_status = _assess_parameter("pH", ph, thresholds["ph"])
     ammonia_status = _assess_parameter("ammonia", ammonia, thresholds["ammonia"])
     nitrite_status = _assess_parameter("nitrite", nitrite, thresholds["nitrite"])
     temperature_status = _assess_parameter("temperature", temperature, thresholds["temperature"])
-    
+
     # Overall status
-    statuses = [ph_status["status"], ammonia_status["status"], nitrite_status["status"], temperature_status["status"]]
+    statuses = [
+        ph_status["status"],
+        ammonia_status["status"],
+        nitrite_status["status"],
+        temperature_status["status"],
+    ]
     if any(s == "CRITICAL" for s in statuses):
         overall_status = "CRITICAL"
     elif any(s == "WARNING" for s in statuses):
         overall_status = "WARNING"
     else:
         overall_status = "OPTIMAL"
-    
+
     # Generate recommendations
     recommendations = []
     if ph_status["status"] != "OPTIMAL":
@@ -503,10 +532,10 @@ def water_quality_monitor(ph: float, ammonia: float, nitrite: float, temperature
         recommendations.append(f"Nitrite: {nitrite_status['recommendation']}")
     if temperature_status["status"] != "OPTIMAL":
         recommendations.append(f"Temperature: {temperature_status['recommendation']}")
-    
+
     if overall_status == "OPTIMAL":
         recommendations.append("All parameters optimal. Continue current management practices.")
-    
+
     return {
         "error": False,
         "overall_status": overall_status,
@@ -518,7 +547,9 @@ def water_quality_monitor(ph: float, ammonia: float, nitrite: float, temperature
             "temperature": temperature_status,
         },
         "recommendations": recommendations,
-        "fish_health_risk": _assess_fish_health_risk(ph_status, ammonia_status, nitrite_status, temperature_status),
+        "fish_health_risk": _assess_fish_health_risk(
+            ph_status, ammonia_status, nitrite_status, temperature_status
+        ),
     }
 
 
@@ -528,14 +559,14 @@ def _assess_parameter(name: str, value: float, thresholds: dict) -> dict:
     max_val = thresholds["max"]
     optimal = thresholds["optimal"]
     unit = thresholds.get("unit", "")
-    
+
     if value < min_val or value > max_val:
         status = "CRITICAL"
     elif abs(value - optimal) > (max_val - min_val) * 0.2:
         status = "WARNING"
     else:
         status = "OPTIMAL"
-    
+
     recommendations = {
         "pH": {
             "CRITICAL": "Emergency: Add buffer (pH up/down) immediately. Check for acid rain or chemical contamination.",
@@ -558,7 +589,7 @@ def _assess_parameter(name: str, value: float, thresholds: dict) -> dict:
             "OPTIMAL": "Temperature is optimal for fish metabolism.",
         },
     }
-    
+
     return {
         "value": value,
         "unit": unit,
@@ -571,11 +602,15 @@ def _assess_parameter(name: str, value: float, thresholds: dict) -> dict:
 
 def _assess_fish_health_risk(ph, ammonia, nitrite, temperature) -> str:
     """Assess overall fish health risk based on water quality."""
-    critical_count = sum(1 for s in [ph, ammonia, nitrite, temperature] if s["status"] == "CRITICAL")
+    critical_count = sum(
+        1 for s in [ph, ammonia, nitrite, temperature] if s["status"] == "CRITICAL"
+    )
     warning_count = sum(1 for s in [ph, ammonia, nitrite, temperature] if s["status"] == "WARNING")
-    
+
     if critical_count >= 2:
-        return "HIGH RISK — Immediate intervention required. Fish mortality likely within 24-48 hours."
+        return (
+            "HIGH RISK — Immediate intervention required. Fish mortality likely within 24-48 hours."
+        )
     elif critical_count == 1 or warning_count >= 2:
         return "MODERATE RISK — Fish stress elevated. Action needed within 24 hours."
     elif warning_count == 1:

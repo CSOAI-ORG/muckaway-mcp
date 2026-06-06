@@ -1,12 +1,11 @@
 """Test suite for muckaway-mcp server."""
 
-import pytest
 from muckaway_mcp.server import (
-    waste_classification_lookup,
-    skip_hire_quote,
-    grab_lorry_booking,
-    waste_transfer_note_generator,
     defra_compliance_check,
+    grab_lorry_booking,
+    skip_hire_quote,
+    waste_classification_lookup,
+    waste_transfer_note_generator,
     water_quality_monitor,
 )
 
